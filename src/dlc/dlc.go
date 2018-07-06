@@ -144,7 +144,7 @@ func (d *Dlc) SetRefundSign(sign []byte, isA bool) {
 	if isA {
 		d.rsigna = sign
 	} else {
-		d.rsigna = sign
+		d.rsignb = sign
 	}
 }
 
