@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -12,47 +13,29 @@ import (
 	"oracle"
 )
 
-// Game is the game dataset.
-type Game struct {
-	// Common parameters
-	pubo   *btcec.PublicKey   // Oracle public key
-	okeys  []*btcec.PublicKey // Oracle contract keys
-	omsgs  [][]byte           // Oracle contract Fixed messages
-	osigns []*big.Int         // Oracle contract Fixed signs
-	rates  []*Rate            // Rate list
-	frate  *Rate              // Fixed rate
-	dlc    *Dlc               // Dlc
-	// Original parameters
-	height int             // Block height
-	length int             // Target length
-	hash   *chainhash.Hash // Block hash
-}
-
-// NewGame returns a new Game.
-func NewGame(dlc *Dlc, height, length int) *Game {
-	game := &Game{}
-	game.dlc = dlc
-	game.height = height
-	game.length = length
-	return game
+// SetGameConditions sets the contidions of game.
+func (d *Dlc) SetGameConditions(height, length int) {
+	d.height = height
+	d.length = length
+	d.locktime = uint32(d.length + 144)
 }
 
 // Rates returns rate array.
-func (g *Game) Rates() []*Rate {
+func (d *Dlc) Rates() []*Rate {
 	// cache check
-	if g.rates != nil {
-		return g.rates
+	if d.rates != nil {
+		return d.rates
 	}
 	// original calc
 	rates := []*Rate{}
-	amount := g.dlc.FundAmount()
+	amount := d.FundAmount()
 	// quarter
-	q := int64(math.Pow(float64(0x100), float64(g.length))) / 4
+	q := int64(math.Pow(float64(0x100), float64(d.length))) / 4
 	// The first quarter is won low and all will be paid low.
 	for x := int64(0); x < q; x++ {
-		msgs := make([][]byte, g.length)
+		msgs := make([][]byte, d.length)
 		for i := range msgs {
-			if i == g.length-1 {
+			if i == d.length-1 {
 				msgs[i] = []byte{byte(x)}
 				continue
 			}
@@ -71,7 +54,7 @@ func (g *Game) Rates() []*Rate {
 	a := float64(amount) / float64(2*q+1)
 	b := float64(a * float64(q-1))
 	for x := q; x < 3*q; x++ {
-		msgs := make([][]byte, g.length)
+		msgs := make([][]byte, d.length)
 		tmp := x
 		for i := range msgs {
 			msgs[i] = []byte{byte(tmp % 0x100)}
@@ -84,9 +67,9 @@ func (g *Game) Rates() []*Rate {
 	}
 	// The last quarter is won high and all will be paid high.
 	for x := q * 3; x < q*4; x++ {
-		msgs := make([][]byte, g.length)
+		msgs := make([][]byte, d.length)
 		for i := range msgs {
-			if i == g.length-1 {
+			if i == d.length-1 {
 				msgs[i] = []byte{byte(x)}
 				continue
 			}
@@ -96,13 +79,13 @@ func (g *Game) Rates() []*Rate {
 		rates = append(rates, rate)
 	}
 	// set cache
-	g.rates = rates
-	return g.rates
+	d.rates = rates
+	return d.rates
 }
 
 // SetOracleKeys sets the public key of oracle and the public keys of the message to the rate.
-func (g *Game) SetOracleKeys(pub *btcec.PublicKey, keys []*btcec.PublicKey) {
-	rates := g.Rates()
+func (d *Dlc) SetOracleKeys(pub *btcec.PublicKey, keys []*btcec.PublicKey) {
+	rates := d.Rates()
 	for _, r := range rates {
 		key := new(btcec.PublicKey)
 		for idx, m := range r.msgs {
@@ -121,14 +104,21 @@ func (g *Game) SetOracleKeys(pub *btcec.PublicKey, keys []*btcec.PublicKey) {
 		}
 		r.key = key
 	}
-	g.pubo = pub
-	g.okeys = keys
+	d.pubo = pub
+	d.okeys = keys
 }
 
 // SetOracleSigns sets oracle's signatures to rate and sets a fixed rate.
-func (g *Game) SetOracleSigns(msgs [][]byte, signs []*big.Int) error {
+func (d *Dlc) SetOracleSigns(hash *chainhash.Hash, signs []*big.Int) error {
+	msgs := [][]byte{}
+	for i := 0; i < chainhash.HashSize; i++ {
+		msgs = append(msgs, []byte{hash[i]})
+	}
+	if len(msgs) != len(signs) {
+		return fmt.Errorf("illegal parameters %v,%x", hash, signs)
+	}
 	// search fixed rate
-	rate := g.searchRate(msgs)
+	rate := d.searchRate(msgs)
 	if rate == nil {
 		return fmt.Errorf("rate not found")
 	}
@@ -146,23 +136,24 @@ func (g *Game) SetOracleSigns(msgs [][]byte, signs []*big.Int) error {
 		return fmt.Errorf("illegal oracle sings")
 	}
 	rate.msign = sign
-	g.frate = rate
-	g.omsgs = msgs
-	g.osigns = signs
+	d.frate = rate
+	d.omsgs = msgs
+	d.osigns = signs
+	d.hash = hash
 	return nil
 }
 
-// GetFixedRate returns a fixed rate.
-func (g *Game) GetFixedRate() *Rate {
-	return g.frate
+// FixedRate returns a fixed rate.
+func (d *Dlc) FixedRate() *Rate {
+	return d.frate
 }
 
-func (g *Game) searchRate(msgs [][]byte) *Rate {
+func (d *Dlc) searchRate(msgs [][]byte) *Rate {
 	var rate *Rate
-	rates := g.Rates()
+	rates := d.Rates()
 	for _, r := range rates {
-		for i := g.length - 1; i >= 0; i-- {
-			if r.msgs[i] == nil || g.bseq(r.msgs[i], msgs[i]) {
+		for i := d.length - 1; i >= 0; i-- {
+			if r.msgs[i] == nil || reflect.DeepEqual(r.msgs[i], msgs[i]) {
 				if i == 0 {
 					rate = r
 				}
@@ -177,31 +168,19 @@ func (g *Game) searchRate(msgs [][]byte) *Rate {
 	return rate
 }
 
-func (g *Game) bseq(bs1, bs2 []byte) bool {
-	if len(bs1) != len(bs2) {
-		return false
-	}
-	for i := range bs1 {
-		if bs1[i] != bs2[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // original function
 
 // GameHeight returns the block height.
-func (g *Game) GameHeight() int {
-	return g.height
+func (d *Dlc) GameHeight() int {
+	return d.height
 }
 
 // GameLength returns the length.
-func (g *Game) GameLength() int {
-	return g.length
+func (d *Dlc) GameLength() int {
+	return d.length
 }
 
 // SetHash sets a block hash.
-func (g *Game) SetHash(hash *chainhash.Hash) {
-	g.hash = hash
+func (d *Dlc) SetHash(hash *chainhash.Hash) {
+	d.hash = hash
 }

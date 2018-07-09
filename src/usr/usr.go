@@ -128,7 +128,7 @@ func (u *User) GetOfferData(d *dlc.Dlc) ([]byte, error) {
 	odata.Fefee = d.FundEstimateFee()
 	odata.Sefee = d.SettlementEstimateFee()
 	odata.Height = d.GameHeight()
-	odata.Length = d.GameLen()
+	odata.Length = d.GameLength()
 	odata.Pubkey = hex.EncodeToString(pub.SerializeCompressed())
 	odata.Inputs = inputs
 	odata.Output = output
@@ -165,8 +165,7 @@ func (u *User) SetOfferData(data []byte) error {
 		return err
 	}
 	u.dlc.SetTxInsAndTxOut(txins, txout, odata.High)
-	game := dlc.NewGame(u.dlc, odata.Height, odata.Length)
-	u.dlc.SetGame(game)
+	u.dlc.SetGameConditions(odata.Height, odata.Length)
 	u.dlc.SetPublicKey(pub, odata.High)
 	u.status = StatusCanGetAccept
 	return nil
@@ -506,7 +505,7 @@ func (u *User) SetOracleSigns(data []byte) error {
 		}
 		signs = append(signs, new(big.Int).SetBytes(bs))
 	}
-	err = u.dlc.SetOracleSigs(hash, signs)
+	err = u.dlc.SetOracleSigns(hash, signs)
 	if err != nil {
 		return err
 	}

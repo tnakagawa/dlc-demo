@@ -42,7 +42,17 @@ type Dlc struct {
 	txoutb   *wire.TxOut      // Fund txout b
 	rsigna   []byte           // Refund signature a
 	rsignb   []byte           // Refund signature b
-	game     *Game            // Game
+	// Parameters with different formats by Oracle
+	pubo   *btcec.PublicKey   // Oracle public key
+	okeys  []*btcec.PublicKey // Oracle contract keys
+	omsgs  [][]byte           // Oracle contract Fixed messages
+	osigns []*big.Int         // Oracle contract Fixed signs
+	rates  []*Rate            // Rate list
+	frate  *Rate              // Fixed rate
+	// Game original parameters
+	height int             // Block height
+	length int             // Target length
+	hash   *chainhash.Hash // Block hash
 }
 
 // Rate is the rate dataset.
@@ -148,34 +158,6 @@ func (d *Dlc) SetRefundSign(sign []byte, isA bool) {
 	}
 }
 
-// SetGame sets the Game.
-func (d *Dlc) SetGame(game *Game) {
-	d.game = game
-	d.locktime = uint32(game.GameHeight() + 144)
-}
-
-// SetOracleKeys sets the public key of oracle and the public keys of message.
-func (d *Dlc) SetOracleKeys(pub *btcec.PublicKey, keys []*btcec.PublicKey) {
-	d.game.SetOracleKeys(pub, keys)
-}
-
-// SetOracleSigs sets the block hash and message signatures.
-func (d *Dlc) SetOracleSigs(hash *chainhash.Hash, signs []*big.Int) error {
-	msgs := [][]byte{}
-	for i := 0; i < chainhash.HashSize; i++ {
-		msgs = append(msgs, []byte{hash[i]})
-	}
-	if len(msgs) != len(signs) {
-		return fmt.Errorf("illegal parameters %v,%x", hash, signs)
-	}
-	err := d.game.SetOracleSigns(msgs, signs)
-	if err != nil {
-		return err
-	}
-	d.game.SetHash(hash)
-	return nil
-}
-
 // IsA returns true if the Dlc is A otherwise it returns false.
 func (d *Dlc) IsA() bool {
 	return d.isA
@@ -199,21 +181,6 @@ func (d *Dlc) FundEstimateFee() int64 {
 // SettlementEstimateFee returns the estimated fee(satoshi per byte) for settlement transaction.
 func (d *Dlc) SettlementEstimateFee() int64 {
 	return d.sefee
-}
-
-// GameHeight returns the height of the block.
-func (d *Dlc) GameHeight() int {
-	return d.game.GameHeight()
-}
-
-// GameLen returns the game length.
-func (d *Dlc) GameLen() int {
-	return d.game.GameLength()
-}
-
-// Rates returns rate array.
-func (d *Dlc) Rates() []*Rate {
-	return d.game.Rates()
 }
 
 // PublicKey returns the public key of A or B.
@@ -431,11 +398,6 @@ func (d *Dlc) VerifyRefundTx(sign []byte, pub *btcec.PublicKey) error {
 		return fmt.Errorf("verify fail : %v", verify)
 	}
 	return nil
-}
-
-// FixedRate returns fixed rate.
-func (d *Dlc) FixedRate() *Rate {
-	return d.game.GetFixedRate()
 }
 
 // SettlementToTx returns the transaction to send to pkScript.

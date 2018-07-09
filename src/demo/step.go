@@ -117,9 +117,9 @@ func stepAliceOrBobSendSettlementTx(num int, demo *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
 	users := []*usr.User{demo.alice, demo.bob}
-	//	if !demo.sc.SendAB {
-	//		users = []*usr.User{demo.bob, demo.alice}
-	//	}
+	if !demo.sc.sendAB {
+		users = []*usr.User{demo.bob, demo.alice}
+	}
 	for _, user := range users {
 		err := user.SendSettlementTx()
 		if err != nil {
@@ -139,7 +139,11 @@ func stepAliceOrBobSendSettlementTx(num int, demo *Demo) error {
 func stepAliceOrBobSendRefundTx(num int, demo *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
-	err := demo.alice.SendRefundTx()
+	user := demo.alice
+	if !demo.sc.sendAB {
+		user = demo.bob
+	}
+	err := user.SendRefundTx()
 	if err != nil {
 		return err
 	}
