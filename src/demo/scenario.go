@@ -54,7 +54,7 @@ func set(args []string, d *Demo) error {
 	if idx < 0 || len(list) <= idx {
 		return fmt.Errorf("out of range. %d,%d", idx, len(list))
 	}
-	err = fauset(nil, d)
+	err = faucet(nil, d)
 	if err != nil {
 		return err
 	}

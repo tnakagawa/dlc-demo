@@ -29,7 +29,7 @@ func listCmds() []*cmd {
 	list = append(list, &cmd{[]string{"decodescript", "ds"}, decodescript})
 	list = append(list, &cmd{[]string{"balance", "b"}, balance})
 	list = append(list, &cmd{[]string{"fee"}, txfee})
-	list = append(list, &cmd{[]string{"fauset"}, fauset})
+	list = append(list, &cmd{[]string{"faucet"}, faucet})
 	return list
 }
 
@@ -102,7 +102,7 @@ func balance(args []string, d *Demo) error {
 	return nil
 }
 
-func fauset(args []string, d *Demo) error {
+func faucet(args []string, d *Demo) error {
 	var err error
 	satoshi := int(1 * btcutil.SatoshiPerBitcoin)
 	if len(args) > 1 {
@@ -115,7 +115,7 @@ func fauset(args []string, d *Demo) error {
 		return fmt.Errorf("satoshi is less than or equal to zero. %d", satoshi)
 	}
 	s := time.Now()
-	fmt.Printf("begin fauset\n")
+	fmt.Printf("begin faucet\n")
 	_, err = d.rpc.Request("generate", 1)
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ func fauset(args []string, d *Demo) error {
 		}
 	}
 	balance(nil, d)
-	fmt.Printf("end   fauset %f sec\n", (time.Now()).Sub(s).Seconds())
+	fmt.Printf("end   faucet %f sec\n", (time.Now()).Sub(s).Seconds())
 	return nil
 }
 
