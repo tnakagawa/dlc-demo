@@ -1,0 +1,9 @@
+# artifacts
+bin/*
+data/*
+pkg/*
+demo/*
+
+# go libraries
+src/github.com/
+src/golang.org/
