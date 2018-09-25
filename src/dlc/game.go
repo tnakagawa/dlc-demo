@@ -3,19 +3,20 @@ package dlc
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"reflect"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 
 	"oracle"
 )
 
 // SetGameConditions sets the contidions of game.
-func (d *Dlc) SetGameConditions(height, length int) {
-	d.height = height
+func (d *Dlc) SetGameConditions(date time.Time, length int) {
+	d.date = date
 	d.length = length
 	d.locktime = uint32(d.length + 144)
 }
@@ -29,55 +30,11 @@ func (d *Dlc) Rates() []*Rate {
 	// original calc
 	rates := []*Rate{}
 	amount := d.FundAmount()
-	// quarter
-	q := int64(math.Pow(float64(0x100), float64(d.length))) / 4
-	// The first quarter is won low and all will be paid low.
-	for x := int64(0); x < q; x++ {
-		msgs := make([][]byte, d.length)
-		for i := range msgs {
-			if i == d.length-1 {
-				msgs[i] = []byte{byte(x)}
-				continue
-			}
-			msgs[i] = nil
-		}
-		rate := NewRate(msgs, 0, amount)
-		rates = append(rates, rate)
-	}
-	// The second and third quarters are paid linearly.
-	// high value is y, quarter is q, amount is A.
-	// y = a*x - b
-	// 0 = a*(q-1) - b
-	// A = a*(3*q) - b
-	// a = A/(2*q+1)
-	// b = a*(q-1)
-	a := float64(amount) / float64(2*q+1)
-	b := float64(a * float64(q-1))
-	for x := q; x < 3*q; x++ {
-		msgs := make([][]byte, d.length)
-		tmp := x
-		for i := range msgs {
-			msgs[i] = []byte{byte(tmp % 0x100)}
-			tmp = (tmp - tmp%0x100) / 0x100
-		}
-		high := int64(math.Round(a*float64(x) - b))
-		low := amount - high
-		rate := NewRate(msgs, high, low)
-		rates = append(rates, rate)
-	}
-	// The last quarter is won high and all will be paid high.
-	for x := q * 3; x < q*4; x++ {
-		msgs := make([][]byte, d.length)
-		for i := range msgs {
-			if i == d.length-1 {
-				msgs[i] = []byte{byte(x)}
-				continue
-			}
-			msgs[i] = nil
-		}
-		rate := NewRate(msgs, amount, 0)
-		rates = append(rates, rate)
-	}
+	rates = append(rates, NewRate([][]byte{big.NewInt(10).Bytes()}, 0, amount))
+	rates = append(rates, NewRate([][]byte{big.NewInt(20).Bytes()}, amount/4, (amount/4)*3))
+	rates = append(rates, NewRate([][]byte{big.NewInt(30).Bytes()}, amount/2, amount/2))
+	rates = append(rates, NewRate([][]byte{big.NewInt(40).Bytes()}, (amount/4)*3, amount/4))
+	rates = append(rates, NewRate([][]byte{big.NewInt(50).Bytes()}, amount, 0))
 	// set cache
 	d.rates = rates
 	return d.rates
@@ -109,13 +66,18 @@ func (d *Dlc) SetOracleKeys(pub *btcec.PublicKey, keys []*btcec.PublicKey) {
 }
 
 // SetOracleSigns sets oracle's signatures to rate and sets a fixed rate.
-func (d *Dlc) SetOracleSigns(hash *chainhash.Hash, signs []*big.Int) error {
+func (d *Dlc) SetOracleSigns(value string, signs []*big.Int) error {
 	msgs := [][]byte{}
-	for i := 0; i < chainhash.HashSize; i++ {
-		msgs = append(msgs, []byte{hash[i]})
+	vals := strings.Split(value, ",")
+	for _, val := range vals {
+		i, err := strconv.Atoi(val)
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, big.NewInt(int64(i)).Bytes())
 	}
 	if len(msgs) != len(signs) {
-		return fmt.Errorf("illegal parameters %v,%x", hash, signs)
+		return fmt.Errorf("illegal parameters %v,%x", value, signs)
 	}
 	// search fixed rate
 	rate := d.searchRate(msgs)
@@ -139,7 +101,7 @@ func (d *Dlc) SetOracleSigns(hash *chainhash.Hash, signs []*big.Int) error {
 	d.frate = rate
 	d.omsgs = msgs
 	d.osigns = signs
-	d.hash = hash
+	d.value = value
 	return nil
 }
 
@@ -170,17 +132,12 @@ func (d *Dlc) searchRate(msgs [][]byte) *Rate {
 
 // original function
 
-// GameHeight returns the block height.
-func (d *Dlc) GameHeight() int {
-	return d.height
+// GameDate returns the date
+func (d *Dlc) GameDate() time.Time {
+	return d.date
 }
 
 // GameLength returns the length.
 func (d *Dlc) GameLength() int {
 	return d.length
-}
-
-// SetHash sets a block hash.
-func (d *Dlc) SetHash(hash *chainhash.Hash) {
-	d.hash = hash
 }

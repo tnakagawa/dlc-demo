@@ -4,6 +4,7 @@ package dlc
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -50,9 +51,9 @@ type Dlc struct {
 	rates  []*Rate            // Rate list
 	frate  *Rate              // Fixed rate
 	// Game original parameters
-	height int             // Block height
-	length int             // Target length
-	hash   *chainhash.Hash // Block hash
+	date   time.Time // Target date
+	length int       // Target length
+	value  string    // Value
 }
 
 // Rate is the rate dataset.

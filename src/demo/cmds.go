@@ -30,6 +30,7 @@ func listCmds() []*cmd {
 	list = append(list, &cmd{[]string{"balance", "b"}, balance})
 	list = append(list, &cmd{[]string{"fee"}, txfee})
 	list = append(list, &cmd{[]string{"faucet"}, faucet})
+	list = append(list, &cmd{[]string{"setval"}, setval})
 	return list
 }
 
@@ -229,4 +230,15 @@ func dump(bs []byte) {
 		return
 	}
 	fmt.Printf("%s\n", buf.String())
+}
+
+func setval(args []string, d *Demo) error {
+	if len(args) < 3 {
+		return fmt.Errorf("illegal parameter")
+	}
+	err := d.olivia.SetVals(args[1], args[2])
+	if err != nil {
+		return err
+	}
+	return nil
 }
