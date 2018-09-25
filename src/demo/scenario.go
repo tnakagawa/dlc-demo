@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/btcsuite/btcutil"
 
@@ -12,11 +13,10 @@ import (
 )
 
 type scenario struct {
-	memo   string
-	dlc    *dlc.Dlc
-	steps  []func(int, *Demo) error
-	pos    int
-	sendAB bool
+	memo  string
+	dlc   *dlc.Dlc
+	steps []func(int, *Demo) error
+	pos   int
 }
 
 func (s *scenario) step(d *Demo) error {
@@ -49,8 +49,6 @@ func set(args []string, d *Demo) error {
 	}
 	list := []func(*Demo) (*scenario, error){}
 	list = append(list, scenario0)
-	list = append(list, scenario1)
-	list = append(list, scenario2)
 	if idx < 0 || len(list) <= idx {
 		return fmt.Errorf("out of range. %d,%d", idx, len(list))
 	}
@@ -80,14 +78,10 @@ func step(args []string, d *Demo) error {
 
 func scenario0(d *Demo) (*scenario, error) {
 	sc := &scenario{}
-	sc.memo = "Alice bet high and it ends normally."
-	sc.sendAB = true
-	res, err := d.rpc.Request("getblockcount")
-	if err != nil {
-		return nil, err
-	}
-	height, _ := res.Result.(float64)
-	sc.dlc, err = makeDlc(true, int(height+10), 1)
+	sc.memo = "normal"
+	date := time.Now()
+	var err error
+	sc.dlc, err = makeDlc(true, date, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -96,63 +90,22 @@ func scenario0(d *Demo) (*scenario, error) {
 	sc.steps = append(sc.steps, stepAliceSendSignToBob)
 	sc.steps = append(sc.steps, stepAliceAndBobSetOracleSign)
 	sc.steps = append(sc.steps, stepAliceOrBobSendSettlementTx)
-	return sc, nil
-}
-
-func scenario1(d *Demo) (*scenario, error) {
-	sc := &scenario{}
-	sc.memo = "Alice bet low and it ends normally."
-	sc.sendAB = false
-	res, err := d.rpc.Request("getblockcount")
-	if err != nil {
-		return nil, err
-	}
-	height, _ := res.Result.(float64)
-	sc.dlc, err = makeDlc(false, int(height+10), 1)
-	if err != nil {
-		return nil, err
-	}
-	sc.steps = append(sc.steps, stepAliceSendOfferToBob)
-	sc.steps = append(sc.steps, stepBobSendAcceptToAlice)
-	sc.steps = append(sc.steps, stepAliceSendSignToBob)
-	sc.steps = append(sc.steps, stepAliceAndBobSetOracleSign)
-	sc.steps = append(sc.steps, stepAliceOrBobSendSettlementTx)
-	return sc, nil
-}
-
-func scenario2(d *Demo) (*scenario, error) {
-	sc := &scenario{}
-	sc.memo = "Since there is no Oracle, send a refund transaction."
-	sc.sendAB = true
-	res, err := d.rpc.Request("getblockcount")
-	if err != nil {
-		return nil, err
-	}
-	height, _ := res.Result.(float64)
-	sc.dlc, err = makeDlc(true, int(height+10), 1)
-	if err != nil {
-		return nil, err
-	}
-	sc.steps = append(sc.steps, stepAliceSendOfferToBob)
-	sc.steps = append(sc.steps, stepBobSendAcceptToAlice)
-	sc.steps = append(sc.steps, stepAliceSendSignToBob)
-	sc.steps = append(sc.steps, stepAliceOrBobSendRefundTx)
 	return sc, nil
 }
 
 //----------------------------------------------------------------
 
-func makeDlc(high bool, count int, length int) (*dlc.Dlc, error) {
+func makeDlc(isA bool, date time.Time, length int) (*dlc.Dlc, error) {
 	amount := int64(1 * btcutil.SatoshiPerBitcoin)
 	fefee := int64(10)                      // fund transaction estimate fee satoshi/byte
 	sefee := int64(10)                      // settlement transaction estimate fee satoshi/byte
 	sfee := dlc.DlcSettlementTxSize * sefee // settlement transaction size is 345 bytes
 	d, err := dlc.NewDlc(half(amount), half(amount), fefee,
-		sefee, half(sfee), half(sfee), high)
+		sefee, half(sfee), half(sfee), isA)
 	if err != nil {
 		return nil, err
 	}
-	d.SetGameConditions(count, length)
+	d.SetGameConditions(date, length)
 	return d, nil
 }
 

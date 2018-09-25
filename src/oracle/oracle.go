@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -17,12 +20,17 @@ import (
 	"rpc"
 )
 
+// OracleTimeLayout is layout of time
+const OracleTimeLayout = "20060102"
+
 // Oracle is the oracle dataset.
 type Oracle struct {
 	name   string                  // oracle name
 	rpc    *rpc.BtcRPC             // bitcoin rpc
 	extKey *hdkeychain.ExtendedKey // oracle extendedkey
 	params chaincfg.Params         // bitcoin network
+	digit  int
+	value  map[string][]int
 }
 
 // NewOracle returns a new Oracle.
@@ -48,6 +56,9 @@ func NewOracle(name string, params chaincfg.Params, rpc *rpc.BtcRPC) (*Oracle, e
 			return nil, err
 		}
 	}
+	// TODO
+	oracle.digit = 1
+	oracle.value = map[string][]int{}
 	oracle.extKey = key
 	return oracle, nil
 }
@@ -59,14 +70,11 @@ type Keys struct {
 }
 
 // Keys returns the keys data.
-func (oracle *Oracle) Keys(height int) ([]byte, error) {
-	if height < 0 {
-		return nil, fmt.Errorf("invalid params height:%d", height)
-	}
-	_, pub, _ := oracle.getKeys(height)
+func (oracle *Oracle) Keys(t time.Time) ([]byte, error) {
+	_, pub, _ := oracle.getKeys(t.Year(), int(t.Month()), t.Day())
 	keys := []string{}
-	for i := 0; i < chainhash.HashSize; i++ {
-		_, key, _ := oracle.getKeys(height, i)
+	for i := 0; i < oracle.digit; i++ {
+		_, key, _ := oracle.getKeys(t.Year(), int(t.Month()), t.Day(), i)
 		keys = append(keys, hex.EncodeToString(key.SerializeCompressed()))
 	}
 	okeys := &Keys{hex.EncodeToString(pub.SerializeCompressed()), keys}
@@ -76,40 +84,38 @@ func (oracle *Oracle) Keys(height int) ([]byte, error) {
 
 // Signs is signatures data format.
 type Signs struct {
-	Hash  string   `json:"hash"`
+	Value string   `json:"value"`
 	Msgs  []string `json:"msgs"`
 	Signs []string `json:"signs"`
 }
 
 // Signs returns the signatures data.
-func (oracle *Oracle) Signs(height int) ([]byte, error) {
-	if height < 0 {
-		return nil, fmt.Errorf("invalid params height:%d", height)
+func (oracle *Oracle) Signs(t time.Time) ([]byte, error) {
+	key := t.Format(OracleTimeLayout)
+	vals, ok := oracle.value[key]
+	if !ok {
+		return nil, fmt.Errorf("not found value %s", key)
 	}
-	res, err := oracle.rpc.Request("getblockcount")
-	if err != nil {
-		return nil, err
-	}
-	count, _ := res.Result.(float64)
-	if int(count) < height {
-		return nil, fmt.Errorf("block height out of range / %d, %d / diff %d",
-			int(count), height, height-int(count))
-	}
-	res, err = oracle.rpc.Request("getblockhash", height)
-	if err != nil {
-		return nil, err
-	}
-	result, _ := res.Result.(string)
-	hash, _ := chainhash.NewHashFromStr(result)
-	pri, _, _ := oracle.getKeys(height)
+	pri, _, _ := oracle.getKeys(t.Year(), int(t.Month()), t.Day())
 	o := pri.D
 	msgs := []string{}
 	sigs := []string{}
-	for i := 0; i < chainhash.HashSize; i++ {
-		key, _, _ := oracle.getKeys(height, i)
+	val := ""
+	for i := 0; i < len(vals); i++ {
+		key, _, _ := oracle.getKeys(t.Year(), int(t.Month()), t.Day(), i)
 		r := key.D
 		R := key.PubKey()
-		m := []byte{hash[i]}
+		// TODO
+		m := big.NewInt(int64(vals[i])).Bytes()
+		if len(m) == 0 {
+			m = []byte{0x00}
+		}
+		// TODO string of value
+		if len(val) > 0 {
+			val += "," + strconv.Itoa(vals[i])
+		} else {
+			val += strconv.Itoa(vals[i])
+		}
 		// s = r - H(R,m)o
 		// ho = H(R,m) * o
 		ho := new(big.Int).Mul(H(R, m), o)
@@ -118,9 +124,31 @@ func (oracle *Oracle) Signs(height int) ([]byte, error) {
 		sigs = append(sigs, hex.EncodeToString(s.Bytes()))
 		msgs = append(msgs, hex.EncodeToString(m))
 	}
-	osigs := &Signs{hash.String(), msgs, sigs}
+	osigs := &Signs{val, msgs, sigs}
 	bs, _ := json.Marshal(osigs)
 	return bs, nil
+}
+
+// SetVals sets date and values
+func (oracle *Oracle) SetVals(d string, v string) error {
+	vs := strings.Split(v, ",")
+	if len(vs) != oracle.digit {
+		return fmt.Errorf("values size error : %s", v)
+	}
+	vals := []int{}
+	for _, v := range vs {
+		val, err := strconv.Atoi(v)
+		if err != nil {
+			return err
+		}
+		vals = append(vals, val)
+	}
+	date, err := time.Parse(OracleTimeLayout, d)
+	if err != nil {
+		return err
+	}
+	oracle.value[date.Format(OracleTimeLayout)] = vals
+	return nil
 }
 
 func (oracle *Oracle) getKeys(path ...int) (*btcec.PrivateKey, *btcec.PublicKey, error) {

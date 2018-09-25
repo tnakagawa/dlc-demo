@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -81,7 +82,7 @@ type OfferData struct {
 	Amount int64    `json:"amount"` // amount of fund transaction
 	Fefee  int64    `json:"fefee"`  // estimate fee of fund transaction (satoshi/byte)
 	Sefee  int64    `json:"sefee"`  // estimate fee of settlement transaction (satoshi/byte)
-	Height int      `json:"height"` // height of target block
+	Date   string   `json:"date"`   // date of target block
 	Length int      `json:"length"` // length of target message
 	Pubkey string   `json:"pubkey"` // public key
 	Inputs []string `json:"inputs"` // inputs of fund transaction
@@ -127,7 +128,7 @@ func (u *User) GetOfferData(d *dlc.Dlc) ([]byte, error) {
 	odata.Amount = d.FundAmount()
 	odata.Fefee = d.FundEstimateFee()
 	odata.Sefee = d.SettlementEstimateFee()
-	odata.Height = d.GameHeight()
+	odata.Date = d.GameDate().Format(oracle.OracleTimeLayout)
 	odata.Length = d.GameLength()
 	odata.Pubkey = hex.EncodeToString(pub.SerializeCompressed())
 	odata.Inputs = inputs
@@ -165,7 +166,11 @@ func (u *User) SetOfferData(data []byte) error {
 		return err
 	}
 	u.dlc.SetTxInsAndTxOut(txins, txout, odata.High)
-	u.dlc.SetGameConditions(odata.Height, odata.Length)
+	date, err := time.Parse(oracle.OracleTimeLayout, odata.Date)
+	if err != nil {
+		return err
+	}
+	u.dlc.SetGameConditions(date, odata.Length)
 	u.dlc.SetPublicKey(pub, odata.High)
 	u.status = StatusCanGetAccept
 	return nil
@@ -455,9 +460,9 @@ func (u *User) SendFundTx() error {
 	return nil
 }
 
-// GameHeight returns the block height for game.
-func (u *User) GameHeight() int {
-	return u.dlc.GameHeight()
+// GameDate returns the date for game.
+func (u *User) GameDate() time.Time {
+	return u.dlc.GameDate()
 }
 
 // SetOracleKeys sets Serialized OracleKeys.
@@ -493,10 +498,10 @@ func (u *User) SetOracleSigns(data []byte) error {
 	if err != nil {
 		return err
 	}
-	hash, err := chainhash.NewHashFromStr(osigs.Hash)
-	if err != nil {
-		return err
-	}
+	// hash, err := chainhash.NewHashFromStr(osigs.Hash)
+	// if err != nil {
+	// 	return err
+	// }
 	signs := []*big.Int{}
 	for _, sign := range osigs.Signs {
 		bs, e := hex.DecodeString(sign)
@@ -505,7 +510,7 @@ func (u *User) SetOracleSigns(data []byte) error {
 		}
 		signs = append(signs, new(big.Int).SetBytes(bs))
 	}
-	err = u.dlc.SetOracleSigns(hash, signs)
+	err = u.dlc.SetOracleSigns(osigs.Value, signs)
 	if err != nil {
 		return err
 	}

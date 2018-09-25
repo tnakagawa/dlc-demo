@@ -17,7 +17,7 @@ func stepAliceSendOfferToBob(num int, d *Demo) error {
 		return err
 	}
 	fmt.Printf("step%d : Alice SetOracleKeys\n", num)
-	keys, err := d.olivia.Keys(d.alice.GameHeight())
+	keys, err := d.olivia.Keys(d.alice.GameDate())
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func stepBobSendAcceptToAlice(num int, d *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
 	fmt.Printf("step%d : Bob SetOracleKeys\n", num)
-	keys, err := d.olivia.Keys(d.bob.GameHeight())
+	keys, err := d.olivia.Keys(d.bob.GameDate())
 	if err != nil {
 		return err
 	}
@@ -90,8 +90,8 @@ func stepAliceSendSignToBob(num int, d *Demo) error {
 func stepAliceAndBobSetOracleSign(num int, d *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
-	height := d.alice.GameHeight()
-	sigs, err := d.olivia.Signs(height)
+	date := d.alice.GameDate()
+	sigs, err := d.olivia.Signs(date)
 	if err != nil {
 		return err
 	}
@@ -100,8 +100,8 @@ func stepAliceAndBobSetOracleSign(num int, d *Demo) error {
 	if err != nil {
 		return err
 	}
-	height = d.bob.GameHeight()
-	sigs, err = d.olivia.Signs(height)
+	date = d.bob.GameDate()
+	sigs, err = d.olivia.Signs(date)
 	if err != nil {
 		return err
 	}
@@ -117,9 +117,6 @@ func stepAliceOrBobSendSettlementTx(num int, demo *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
 	users := []*usr.User{demo.alice, demo.bob}
-	if !demo.sc.sendAB {
-		users = []*usr.User{demo.bob, demo.alice}
-	}
 	for _, user := range users {
 		err := user.SendSettlementTx()
 		if err != nil {
@@ -140,9 +137,6 @@ func stepAliceOrBobSendRefundTx(num int, demo *Demo) error {
 	s := time.Now()
 	fmt.Printf("begin step%d\n", num)
 	user := demo.alice
-	if !demo.sc.sendAB {
-		user = demo.bob
-	}
 	err := user.SendRefundTx()
 	if err != nil {
 		return err
